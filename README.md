@@ -36,6 +36,18 @@ the scan endpoint and the full SSRF rejection set. See
 
 ## Docker
 
+A helper script wraps the common operations:
+
+```bash
+./dev.sh up              # build, start, wait for the health check
+./dev.sh scan example.com   # scan through the container and print findings
+./dev.sh logs            # follow the logs
+./dev.sh test            # ruff, mypy and pytest in a throwaway container
+./dev.sh down            # stop and remove
+```
+
+Run `./dev.sh` with no arguments for the full list. Or use compose directly:
+
 ```bash
 docker compose up --build
 ```
@@ -54,6 +66,11 @@ Override any setting through the environment (see `.env.example`):
 ```bash
 JUSSIAI_MAX_REDIRECTS=3 docker compose up
 ```
+
+> A local `uvicorn` already listening on port 8000 will shadow the container:
+> requests reach the host process instead, and the container looks stale.
+> `./dev.sh up` warns when it detects this. Stop the host process, or use
+> `JUSSIAI_PORT=8010 ./dev.sh up` with a matching port in `docker-compose.yml`.
 
 A commented-out `ollama` service is included behind a profile
 (`docker compose --profile ai up`) for when the AI layer lands. It does nothing
