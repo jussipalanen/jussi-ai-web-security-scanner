@@ -117,9 +117,7 @@ function renderResults(data) {
   sorted.forEach((f) => results.appendChild(renderFinding(f)));
 }
 
-form.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  const url = input.value.trim();
+async function runScan(url) {
   if (!url) return;
 
   submit.disabled = true;
@@ -162,4 +160,22 @@ form.addEventListener("submit", async (event) => {
     statusLine.hidden = true;
     submit.disabled = false;
   }
+}
+
+form.addEventListener("submit", (event) => {
+  event.preventDefault();
+  runScan(input.value.trim());
 });
+
+// ?url=<target> prefills the field and scans immediately, so a scan can be
+// linked to or bookmarked. The value is only ever read as text and sent to
+// /scan, which applies the same validation as any other request; nothing here
+// trusts it.
+(function scanFromQueryString() {
+  const requested = new URLSearchParams(window.location.search).get("url");
+  if (!requested) return;
+  const url = requested.trim();
+  if (!url) return;
+  input.value = url;
+  runScan(url);
+})();

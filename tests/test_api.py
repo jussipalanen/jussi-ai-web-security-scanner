@@ -103,3 +103,22 @@ def test_page_never_writes_raw_html(client: TestClient) -> None:
 
 def test_test_page_is_hidden_from_the_api_schema(client: TestClient) -> None:
     assert "/test-url" not in client.get("/openapi.json").json()["paths"]
+
+
+def test_page_supports_a_url_query_parameter(client: TestClient) -> None:
+    """?url=<target> prefills and runs the scan, so a scan can be linked to."""
+    source = client.get("/static/app.js").text
+    assert "URLSearchParams" in source
+    assert 'get("url")' in source
+
+
+def test_url_query_parameter_is_not_rendered_server_side(client: TestClient) -> None:
+    """The value must never be echoed into the HTML by the server.
+
+    The page is fully static and identical for every request; the parameter is
+    read client-side and sent to /scan, which validates it like any other input.
+    """
+    plain = client.get("/test-url").text
+    injected = client.get("/test-url?url=%3Cscript%3Ealert(1)%3C/script%3E").text
+    assert plain == injected
+    assert "<script>alert" not in injected

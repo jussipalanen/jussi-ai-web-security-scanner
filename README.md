@@ -19,6 +19,7 @@ Early development. Implemented so far:
 - **Scanner engine** and 7 of the 11 MVP checks
 - FastAPI application with `/health`, `/validate` and `/scan`
 - Browser test page at `/test-url`
+- PDF and JSON reports from the command line
 
 Not yet implemented: TLS certificate checks, `robots.txt`, `sitemap.xml`,
 technology detection, scoring, and the AI layer. See [Roadmap](#roadmap).
@@ -116,9 +117,18 @@ Enter a host, submit, and the findings render with their descriptions and
 remediation steps. It is served by the backend itself, so it is same-origin and
 needs no CORS configuration.
 
+A target can also be passed in the query string, which scans it immediately —
+useful for bookmarking or linking a scan:
+
+```
+http://localhost:8000/test-url?url=https://example.com
+```
+
 The page is static (no build step, no external resources) and locked down with
-`default-src 'none'` — it renders header values echoed from scanned sites, so
-everything is inserted as text, never as HTML.
+`default-src 'none'`. It renders header values echoed from scanned sites, so
+everything is inserted as text, never as HTML. The `?url=` value is read
+client-side and never echoed into the page by the server — the response is
+byte-identical whatever the parameter contains.
 
 ## Scanning a site
 
@@ -178,6 +188,30 @@ curl -s -X POST localhost:8000/scan \
          | "[\(.severity)] \(.title)\n  -> \(.remediation)\n"'
 ```
 
+### PDF and JSON reports
+
+The scanner runs from the command line without the API, which is the simplest
+way to produce a report file:
+
+```bash
+.venv/bin/python -m jussiai_scanner example.com --pdf report.pdf
+.venv/bin/python -m jussiai_scanner example.com --json result.json --quiet
+```
+
+Installing the package also provides a `jussiai-scan` command. Use `-` as the
+path to stream to stdout. Exit codes: `0` scanned, `2` target rejected, `3`
+target unreachable.
+
+Through Docker:
+
+```bash
+./dev report example.com              # writes report.pdf
+./dev report example.com audit.pdf
+```
+
+The PDF lists every finding with its description, remediation and evidence,
+grouped worst-first. It states plainly that no score is included.
+
 ### Checking a URL without scanning it
 
 `POST /validate` answers "is this target allowed?" and sends **no request** to it:
@@ -231,6 +265,8 @@ src/jussiai_scanner/
 │   ├── http_client.py   Pins connections to validated IPs; revalidates each hop
 │   ├── engine.py        Owns all network access; runs the check registry
 │   └── checks/          One small module per concern
+├── reporting/           PDF rendering
+├── cli.py               jussiai-scan / python -m jussiai_scanner
 ├── security/            Validation and SSRF defence
 │   ├── errors.py        TargetValidationError / BlockedAddressError
 │   ├── ip_rules.py      Address classification (ipaddress-based)

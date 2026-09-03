@@ -163,6 +163,22 @@ cmd_test() {
     /tmp/venv/bin/pytest -q'
 }
 
+# The PDF is streamed over stdout rather than written inside the container:
+# the container filesystem is read-only apart from a tmpfs at /tmp, and
+# `docker cp` cannot read from a tmpfs mount.
+cmd_report() {
+  require_daemon
+  [[ $# -ge 1 ]] || die "usage: ./dev report <url> [output.pdf]"
+  local url="$1"
+  local out="${2:-report.pdf}"
+  [[ -n "$("${DC[@]}" ps -q "$SERVICE")" ]] || die "the api container is not running. Start it with: ./dev up"
+
+  info "scanning ${url}"
+  "${DC[@]}" exec -T "$SERVICE" python -m jussiai_scanner "$url" --pdf - --quiet > "$out"
+  [[ -s "$out" ]] || { rm -f "$out"; die "no report was produced"; }
+  info "report written to ${out} ($(wc -c < "$out") bytes)"
+}
+
 cmd_clean() {
   require_daemon
   info "removing containers, volumes and the built image"
@@ -191,8 +207,9 @@ Inspect
   shell       Open a shell in the running container
 
 Use
-  scan <url>  Scan a URL through the container and print the findings
-  test        Run ruff, mypy and pytest in a throwaway container
+  scan <url>            Scan a URL and print the findings
+  report <url> [file]   Scan and write a PDF report (default: report.pdf)
+  test                  Run ruff, mypy and pytest in a throwaway container
 
 Environment
   JUSSIAI_PORT   Host port to report in messages (default 8000)
@@ -211,6 +228,7 @@ case "${1:-}" in
   health)   shift; cmd_health "$@" ;;
   shell)    shift; cmd_shell "$@" ;;
   scan)     shift; cmd_scan "$@" ;;
+  report)   shift; cmd_report "$@" ;;
   test)     shift; cmd_test "$@" ;;
   ""|-h|--help|help) usage ;;
   *)        echo "unknown command: $1" >&2; echo >&2; usage; exit 1 ;;
