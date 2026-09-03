@@ -122,3 +122,10 @@ def test_url_query_parameter_is_not_rendered_server_side(client: TestClient) -> 
     injected = client.get("/test-url?url=%3Cscript%3Ealert(1)%3C/script%3E").text
     assert plain == injected
     assert "<script>alert" not in injected
+
+
+def test_page_reflects_the_scanned_target_in_the_address_bar(client: TestClient) -> None:
+    """Submitting updates ?url= so a result can be shared or reloaded."""
+    source = client.get("/static/app.js").text
+    assert "pushState" in source
+    assert "popstate" in source, "back/forward should move between scans"

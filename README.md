@@ -124,6 +124,9 @@ useful for bookmarking or linking a scan:
 http://localhost:8000/test-url?url=https://example.com
 ```
 
+Submitting the form updates the address bar to match, so a result can be
+shared or reloaded, and back/forward move between scans.
+
 The page is static (no build step, no external resources) and locked down with
 `default-src 'none'`. It renders header values echoed from scanned sites, so
 everything is inserted as text, never as HTML. The `?url=` value is read

@@ -162,19 +162,51 @@ async function runScan(url) {
   }
 }
 
+/** The ?url= value currently in the address bar, or "". */
+function urlFromLocation() {
+  return (new URLSearchParams(window.location.search).get("url") || "").trim();
+}
+
+/**
+ * Reflect the scanned target in the address bar so the result can be shared,
+ * bookmarked or reloaded. URLSearchParams encodes the value, and it is never
+ * written back into the document.
+ */
+function pushLocation(url) {
+  const params = new URLSearchParams(window.location.search);
+  params.set("url", url);
+  const next = `${window.location.pathname}?${params.toString()}`;
+  if (next !== window.location.pathname + window.location.search) {
+    window.history.pushState({ url }, "", next);
+  }
+}
+
 form.addEventListener("submit", (event) => {
   event.preventDefault();
-  runScan(input.value.trim());
+  const url = input.value.trim();
+  if (!url) return;
+  pushLocation(url);
+  runScan(url);
+});
+
+// Back and forward should move between scans rather than leaving the page.
+window.addEventListener("popstate", () => {
+  const url = urlFromLocation();
+  input.value = url;
+  if (url) {
+    runScan(url);
+  } else {
+    errorBox.hidden = true;
+    summary.hidden = true;
+    clear(results);
+  }
 });
 
 // ?url=<target> prefills the field and scans immediately, so a scan can be
-// linked to or bookmarked. The value is only ever read as text and sent to
-// /scan, which applies the same validation as any other request; nothing here
-// trusts it.
+// linked to. The value is only ever read as text and sent to /scan, which
+// validates it like any other request; nothing here trusts it.
 (function scanFromQueryString() {
-  const requested = new URLSearchParams(window.location.search).get("url");
-  if (!requested) return;
-  const url = requested.trim();
+  const url = urlFromLocation();
   if (!url) return;
   input.value = url;
   runScan(url);
