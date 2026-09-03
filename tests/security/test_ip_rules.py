@@ -47,10 +47,12 @@ BLOCKED = [
     "64:ff9b::a9fe:a9fe",  # NAT64 wrapping 169.254.169.254
 ]
 
+# Publicly routable addresses. RFC 5737 documentation ranges (192.0.2.0/24,
+# 198.51.100.0/24, 203.0.113.0/24) cannot be used here: they are not globally
+# routable, so the scanner correctly rejects them.
 ALLOWED = [
     "1.1.1.1",
     "8.8.8.8",
-    "93.184.216.34",
     "2606:4700:4700::1111",
     "2001:4860:4860::8888",
 ]

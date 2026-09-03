@@ -37,9 +37,9 @@ def test_internationalized_domain_is_idna_encoded(settings: Settings) -> None:
 
 
 def test_public_ip_literal_is_accepted(settings: Settings) -> None:
-    target = validate_target_url("http://93.184.216.34/", settings)
+    target = validate_target_url("http://1.1.1.1/", settings)
     assert target.is_ip_literal
-    assert target.host == "93.184.216.34"
+    assert target.host == "1.1.1.1"
 
 
 def test_public_ipv6_literal_keeps_brackets_in_url(settings: Settings) -> None:

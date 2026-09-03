@@ -38,6 +38,9 @@ class Finding(BaseModel):
         confidence: How certain the check is.
         evidence: Verbatim observed values (header contents, status codes, ...).
             This is the only factual basis the AI layer is allowed to describe.
+        remediation: Concrete steps to resolve the finding. Written in Python by
+            the check itself, so the advice is deterministic and reviewable; the
+            AI layer may elaborate on it but never replaces it.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -47,4 +50,5 @@ class Finding(BaseModel):
     severity: Severity
     confidence: Confidence = Confidence.HIGH
     description: str = ""
+    remediation: str = ""
     evidence: dict[str, str] = Field(default_factory=dict)

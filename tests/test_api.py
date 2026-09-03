@@ -43,3 +43,18 @@ def test_validate_rejects_unknown_fields(client: TestClient) -> None:
 
 def test_openapi_is_served(client: TestClient) -> None:
     assert client.get("/openapi.json").status_code == 200
+
+
+def test_scan_rejects_unsafe_target(client: TestClient) -> None:
+    """The endpoint refuses before any socket is opened."""
+    response = client.post("/scan", json={"url": "http://169.254.169.254/"})
+    assert response.status_code == 422
+    assert response.json()["detail"]
+
+
+def test_scan_is_documented(client: TestClient) -> None:
+    spec = client.get("/openapi.json").json()
+    assert "/scan" in spec["paths"]
+    finding = spec["components"]["schemas"]["Finding"]["properties"]
+    assert "remediation" in finding
+    assert "description" in finding

@@ -15,11 +15,18 @@ Early development. Implemented so far:
 
 - Project skeleton, packaging, tooling
 - **Target validation and SSRF protection** (`jussiai_scanner.security`)
-- FastAPI application with `/health` and `/validate`
-- Shared finding/severity models
+- **SSRF-safe HTTP client** with address pinning and per-hop revalidation
+- **Scanner engine** and 7 of the 11 MVP checks
+- FastAPI application with `/health`, `/validate` and `/scan`
 
-Not yet implemented: the scanner engine, the individual checks, scoring, and the
-AI layer. See [Roadmap](#roadmap).
+Not yet implemented: TLS certificate checks, `robots.txt`, `sitemap.xml`,
+technology detection, scoring, and the AI layer. See [Roadmap](#roadmap).
+
+## Testing with Postman
+
+An importable collection lives in [`postman/`](postman/) — 33 requests covering
+the scan endpoint and the full SSRF rejection set. See
+[postman/README.md](postman/README.md).
 
 ## Requirements
 
@@ -52,9 +59,95 @@ Interactive API docs: <http://127.0.0.1:8000/docs>
 
 ```bash
 curl -s localhost:8000/health
-curl -s -X POST localhost:8000/validate -H 'content-type: application/json' \
+```
+
+## Scanning a site
+
+`POST /scan` runs the checks and returns findings. Replace `example.com` with the
+host you want to scan.
+
+```bash
+curl -s -X POST localhost:8000/scan \
+  -H 'content-type: application/json' \
   -d '{"url": "example.com"}'
 ```
+
+A bare host is fine — it is normalised to `https://` — and so is a full URL with
+a path.
+
+### What comes back
+
+```jsonc
+{
+  "requested_url": "example.com",
+  "final_url": "https://example.com/",   // after following redirects
+  "status_code": 200,
+  "duration_ms": 157.0,
+  "counts": { "high": 0, "medium": 3, "low": 3, "info": 5 },
+  "findings": [
+    {
+      "check_id": "headers.content-security-policy",
+      "title": "content-security-policy header is missing",
+      "severity": "medium",              // info | low | medium | high
+      "confidence": "high",
+      "description": "This header restricts where scripts, styles and frames may load from ...",
+      "remediation": "Roll out in report-only mode first: Content-Security-Policy-Report-Only ...",
+      "evidence": { "header": "content-security-policy", "present": "false" }
+    }
+  ],
+  "checks_run": ["check_availability", "check_transport", "..."],
+  "notes": []                            // what the scanner could not do, and why
+}
+```
+
+Every finding carries a `description` (what it means) and a `remediation` (what to
+do about it). Both are written by the Python check, so the advice is deterministic
+and reviewable — no model generated them. `evidence` holds the raw observed values.
+
+`notes` records anything the scanner skipped, such as port 80 being closed, so a
+partial scan is never silently reported as a clean one.
+
+### Just the action items
+
+Pipe the response through `jq` to list only what needs fixing:
+
+```bash
+curl -s -X POST localhost:8000/scan \
+  -H 'content-type: application/json' \
+  -d '{"url": "example.com"}' \
+| jq -r '.findings[] | select(.severity != "info")
+         | "[\(.severity)] \(.title)\n  -> \(.remediation)\n"'
+```
+
+### Checking a URL without scanning it
+
+`POST /validate` answers "is this target allowed?" and sends **no request** to it:
+
+```bash
+curl -s -X POST localhost:8000/validate -H 'content-type: application/json' \
+  -d '{"url": "example.com"}'
+# {"url":"https://example.com/","scheme":"https","host":"example.com","port":443}
+```
+
+### Responses you may get
+
+| Status | Meaning |
+|---|---|
+| `200` | Scan completed |
+| `422` | Target refused by validation (private address, bad scheme, disallowed port, unresolvable name) |
+| `502` | Target is allowed but could not be reached |
+
+### What it checks today
+
+HTTP status, response time, HTTPS on the final URL, HTTP→HTTPS upgrade, redirect
+chain (including HTTPS→HTTP downgrades), six security headers, and
+`Server`/`X-Powered-By` information disclosure.
+
+All requests are read-only `GET`s. Nothing is crawled, fuzzed or modified. Only
+scan hosts you own or are explicitly authorised to test.
+
+> There is no `score` field yet, and no AI commentary — both are separate
+> roadmap items.
 
 ## Quality gate
 
@@ -75,6 +168,10 @@ src/jussiai_scanner/
 ├── models/              Pydantic models shared across layers
 │   ├── findings.py      Severity, Confidence, Finding
 │   └── scan.py          API request/response shapes
+├── scanner/             Engine, SSRF-safe client, individual checks
+│   ├── http_client.py   Pins connections to validated IPs; revalidates each hop
+│   ├── engine.py        Owns all network access; runs the check registry
+│   └── checks/          One small module per concern
 ├── security/            Validation and SSRF defence
 │   ├── errors.py        TargetValidationError / BlockedAddressError
 │   ├── ip_rules.py      Address classification (ipaddress-based)
@@ -123,9 +220,11 @@ is allowed to describe.
 ## Roadmap
 
 - [x] Validation & SSRF core
-- [ ] SSRF-safe HTTP client (pinned addresses, redirect re-validation, size/time caps)
-- [ ] Scanner engine + MVP checks (status, timing, HTTPS, redirects, TLS,
-      security headers, information disclosure, `robots.txt`, `sitemap.xml`,
-      lightweight tech detection)
+- [x] SSRF-safe HTTP client (pinned addresses, redirect re-validation, size/time caps)
+- [x] Scanner engine + `POST /scan`
+- [x] Checks: status, response time, HTTPS, HTTP→HTTPS redirect, redirect chain,
+      security headers, information disclosure
+- [ ] Checks: TLS/certificate basics, `robots.txt`, `sitemap.xml`, lightweight
+      technology detection
 - [ ] Deterministic scoring (0–100), documented algorithm
 - [ ] AI provider abstraction + Ollama implementation

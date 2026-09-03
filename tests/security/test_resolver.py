@@ -35,8 +35,8 @@ def _resolver(*addresses: str) -> Resolver:
 
 def test_public_answer_is_accepted(settings: Settings) -> None:
     target = validate_target_url("https://example.com", settings)
-    resolved = resolve_target(target, _resolver("93.184.216.34"))
-    assert resolved.connect_address == ipaddress.ip_address("93.184.216.34")
+    resolved = resolve_target(target, _resolver("1.1.1.1"))
+    assert resolved.connect_address == ipaddress.ip_address("1.1.1.1")
 
 
 def test_private_answer_is_rejected(settings: Settings) -> None:
@@ -60,7 +60,7 @@ def test_mixed_answer_is_rejected(settings: Settings) -> None:
     """
     target = validate_target_url("https://example.com", settings)
     with pytest.raises(BlockedAddressError):
-        resolve_target(target, _resolver("93.184.216.34", "127.0.0.1"))
+        resolve_target(target, _resolver("1.1.1.1", "127.0.0.1"))
 
 
 def test_empty_answer_is_rejected(settings: Settings) -> None:
@@ -73,18 +73,18 @@ def test_ip_literal_target_skips_dns(settings: Settings) -> None:
     def exploding_resolver(host: str, port: int) -> list[IPAddress]:
         raise AssertionError("DNS must not be queried for an IP literal")
 
-    target = validate_target_url("http://93.184.216.34/", settings)
+    target = validate_target_url("http://1.1.1.1/", settings)
     resolved = resolve_target(target, exploding_resolver)
-    assert resolved.addresses == (ipaddress.ip_address("93.184.216.34"),)
+    assert resolved.addresses == (ipaddress.ip_address("1.1.1.1"),)
 
 
 def test_addresses_are_pinned_for_the_connection(settings: Settings) -> None:
     """Callers get concrete addresses so connections need not re-resolve."""
     target = validate_target_url("https://example.com", settings)
-    resolved = resolve_target(target, _resolver("93.184.216.34", "1.1.1.1"))
+    resolved = resolve_target(target, _resolver("1.1.1.1", "8.8.8.8"))
     assert resolved.addresses == (
-        ipaddress.ip_address("93.184.216.34"),
         ipaddress.ip_address("1.1.1.1"),
+        ipaddress.ip_address("8.8.8.8"),
     )
 
 
@@ -109,8 +109,8 @@ def test_system_resolver_maps_gaierror(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_system_resolver_deduplicates(monkeypatch: pytest.MonkeyPatch) -> None:
     def fake_getaddrinfo(*args: object, **kwargs: object) -> list[tuple[object, ...]]:
         return [
-            (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 443)),
-            (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 443)),
+            (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("1.1.1.1", 443)),
+            (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("1.1.1.1", 443)),
             (socket.AF_INET6, socket.SOCK_STREAM, 6, "", ("2606:2800:220:1::1", 443, 0, 0)),
         ]
 
@@ -125,5 +125,5 @@ def test_validate_addresses_returns_input_when_all_public() -> None:
 
 async def test_async_resolution(settings: Settings) -> None:
     target = validate_target_url("https://example.com", settings)
-    resolved = await resolve_target_async(target, _resolver("93.184.216.34"))
-    assert resolved.connect_address == ipaddress.ip_address("93.184.216.34")
+    resolved = await resolve_target_async(target, _resolver("1.1.1.1"))
+    assert resolved.connect_address == ipaddress.ip_address("1.1.1.1")

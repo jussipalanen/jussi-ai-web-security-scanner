@@ -1,0 +1,1372 @@
+{
+  "info": {
+    "_postman_id": "9f2c1b40-5a7e-4c3d-8f16-2b7d4e9a0c31",
+    "name": "JussiAI Web Security Scanner",
+    "description": "API collection for the JussiAI Web Security Scanner backend.\n\nSet `baseUrl` and `targetUrl` in the environment before running. `targetUrl` deliberately defaults to the reserved documentation domain `example.com` - point it at a host you own and are authorised to test.\n\n`POST /scan` makes real outbound requests to the target. `POST /validate` makes none: it only decides whether a target is allowed.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Service health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "health"
+              ]
+            },
+            "description": "Liveness probe. Also reports whether the AI layer is enabled."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"reports ok\", () => pm.expect(body.status).to.eql(\"ok\"));",
+                  "pm.test(\"reports a version\", () => {",
+                  "    pm.expect(body.version).to.be.a(\"string\").and.to.not.be.empty;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "OpenAPI schema",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/openapi.json",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "openapi.json"
+              ]
+            },
+            "description": "Machine-readable API surface. Interactive docs live at /docs."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"describes the validate endpoint\", () => {",
+                  "    pm.expect(pm.response.json().paths).to.have.property(\"/validate\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Scan",
+      "description": "Runs the deterministic checks and returns findings, each with a description and a concrete remediation step.\n\nThese requests make real outbound GETs to whatever `targetUrl` points at. Only scan hosts you own or are authorised to test.\n\nCurrently implemented: HTTP status, response time, HTTPS, HTTP->HTTPS upgrade, redirect chain, security headers, information disclosure. No score and no AI commentary yet.",
+      "item": [
+        {
+          "name": "Scan target",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"url\": \"{{targetUrl}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/scan",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "scan"
+              ]
+            },
+            "description": "The main request. Point `targetUrl` at a host you are allowed to scan."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"scan completed with 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"reports where it ended up\", () => {",
+                  "    pm.expect(body.final_url).to.match(/^https?:\\/\\//);",
+                  "    pm.expect(body.status_code).to.be.a(\"number\");",
+                  "});",
+                  "pm.test(\"returns findings\", () => {",
+                  "    pm.expect(body.findings).to.be.an(\"array\").and.to.not.be.empty;",
+                  "});",
+                  "pm.test(\"every finding has id, title, severity and description\", () => {",
+                  "    body.findings.forEach((f) => {",
+                  "        pm.expect(f.check_id, \"check_id\").to.be.a(\"string\").and.to.not.be.empty;",
+                  "        pm.expect(f.title, \"title\").to.be.a(\"string\").and.to.not.be.empty;",
+                  "        pm.expect(f.description, \"description\").to.be.a(\"string\");",
+                  "        pm.expect([\"info\", \"low\", \"medium\", \"high\"]).to.include(f.severity);",
+                  "    });",
+                  "});",
+                  "pm.test(\"every finding says how to fix it\", () => {",
+                  "    body.findings.forEach((f) => {",
+                  "        pm.expect(f.remediation, f.check_id).to.be.a(\"string\").and.to.not.be.empty;",
+                  "    });",
+                  "});",
+                  "pm.test(\"severity counts add up to the finding total\", () => {",
+                  "    const c = body.counts;",
+                  "    pm.expect(c.high + c.medium + c.low + c.info).to.eql(body.findings.length);",
+                  "});",
+                  "pm.test(\"no score is claimed yet\", () => {",
+                  "    pm.expect(body).to.not.have.property(\"score\");",
+                  "});",
+                  "// Surface the actionable items in the Postman console.",
+                  "body.findings",
+                  "    .filter((f) => f.severity !== \"info\" && f.remediation !== \"No action needed.\")",
+                  "    .forEach((f) => console.log(`[${f.severity}] ${f.title}\\n  FIX: ${f.remediation}`));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Scan explicit https URL",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"url\": \"https://{{targetUrl}}/\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/scan",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "scan"
+              ]
+            },
+            "description": "Same scan with the scheme spelled out."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"scan completed with 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"reports where it ended up\", () => {",
+                  "    pm.expect(body.final_url).to.match(/^https?:\\/\\//);",
+                  "    pm.expect(body.status_code).to.be.a(\"number\");",
+                  "});",
+                  "pm.test(\"returns findings\", () => {",
+                  "    pm.expect(body.findings).to.be.an(\"array\").and.to.not.be.empty;",
+                  "});",
+                  "pm.test(\"every finding has id, title, severity and description\", () => {",
+                  "    body.findings.forEach((f) => {",
+                  "        pm.expect(f.check_id, \"check_id\").to.be.a(\"string\").and.to.not.be.empty;",
+                  "        pm.expect(f.title, \"title\").to.be.a(\"string\").and.to.not.be.empty;",
+                  "        pm.expect(f.description, \"description\").to.be.a(\"string\");",
+                  "        pm.expect([\"info\", \"low\", \"medium\", \"high\"]).to.include(f.severity);",
+                  "    });",
+                  "});",
+                  "pm.test(\"every finding says how to fix it\", () => {",
+                  "    body.findings.forEach((f) => {",
+                  "        pm.expect(f.remediation, f.check_id).to.be.a(\"string\").and.to.not.be.empty;",
+                  "    });",
+                  "});",
+                  "pm.test(\"severity counts add up to the finding total\", () => {",
+                  "    const c = body.counts;",
+                  "    pm.expect(c.high + c.medium + c.low + c.info).to.eql(body.findings.length);",
+                  "});",
+                  "pm.test(\"no score is claimed yet\", () => {",
+                  "    pm.expect(body).to.not.have.property(\"score\");",
+                  "});",
+                  "// Surface the actionable items in the Postman console.",
+                  "body.findings",
+                  "    .filter((f) => f.severity !== \"info\" && f.remediation !== \"No action needed.\")",
+                  "    .forEach((f) => console.log(`[${f.severity}] ${f.title}\\n  FIX: ${f.remediation}`));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Scan - blocked target (loopback)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"url\": \"http://127.0.0.1/\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/scan",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "scan"
+              ]
+            },
+            "description": "Validation runs before any request; the scan never starts."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"rejected with 422 before any socket is opened\", () => {",
+                  "    pm.response.to.have.status(422);",
+                  "});",
+                  "pm.test(\"explains why\", () => {",
+                  "    pm.expect(pm.response.json().detail).to.be.a(\"string\").and.to.not.be.empty;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Scan - blocked target (metadata)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"url\": \"http://169.254.169.254/\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/scan",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "scan"
+              ]
+            },
+            "description": "The SSRF rules apply to /scan exactly as they do to /validate."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"rejected with 422 before any socket is opened\", () => {",
+                  "    pm.response.to.have.status(422);",
+                  "});",
+                  "pm.test(\"explains why\", () => {",
+                  "    pm.expect(pm.response.json().detail).to.be.a(\"string\").and.to.not.be.empty;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Scan - unreachable host",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"url\": \"does-not-exist.example.com\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/scan",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "scan"
+              ]
+            },
+            "description": "A valid but unresolvable target. Expect 422 (name does not resolve) or 502 (reachable name, dead host)."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"reports the failure, not a crash\", () => {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([422, 502]);",
+                  "});",
+                  "pm.test(\"explains why\", () => {",
+                  "    pm.expect(pm.response.json().detail).to.be.a(\"string\").and.to.not.be.empty;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Validate - accepted",
+      "description": "Targets that pass validation. A 200 means 'allowed to be scanned', not 'scanned'.",
+      "item": [
+        {
+          "name": "Bare hostname (scheme added)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"url\": \"{{targetUrl}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/validate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "validate"
+              ]
+            },
+            "description": "A bare host is normalised to https:// with an explicit / path."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"accepted with 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"returns a normalised absolute URL\", () => {",
+                  "    pm.expect(body.url).to.match(/^https?:\\/\\/.+/);",
+                  "});",
+                  "pm.test(\"defaults to https on port 443\", () => {",
+                  "    pm.expect(body.scheme).to.eql(\"https\");",
+                  "    pm.expect(body.port).to.eql(443);",
+                  "});",
+                  "pm.test(\"empty path is normalised to /\", () => {",
+                  "    pm.expect(body.url).to.match(/\\/$/);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Full URL with path and query",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"url\": \"https://{{targetUrl}}/some/path?a=1\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/validate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "validate"
+              ]
+            },
+            "description": "Path and query survive normalisation; the fragment is dropped."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"accepted with 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"path and query are preserved\", () => {",
+                  "    pm.expect(body.url).to.include(\"/some/path\");",
+                  "    pm.expect(body.url).to.include(\"a=1\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Explicit http on port 80",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"url\": \"http://{{targetUrl}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/validate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "validate"
+              ]
+            },
+            "description": "http is allowed; port 80 is in the default allowlist."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"accepted with 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"scheme and port reflect the input\", () => {",
+                  "    pm.expect(body.scheme).to.eql(\"http\");",
+                  "    pm.expect(body.port).to.eql(80);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Internationalised domain (IDNA)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"url\": \"https://b\\u00fccher.de\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/validate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "validate"
+              ]
+            },
+            "description": "Unicode hostnames are punycode-encoded before any lookup."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"accepted with 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"host is punycode-encoded\", () => {",
+                  "    pm.expect(pm.response.json().host).to.eql(\"xn--bcher-kva.de\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "With AI analysis flag",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"url\": \"{{targetUrl}}\",\n  \"include_ai_analysis\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/validate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "validate"
+              ]
+            },
+            "description": "include_ai_analysis is accepted but has no effect yet - the AI layer is not implemented."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"accepted with 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Validate - blocked (SSRF)",
+      "description": "Every request here must come back 422. These are the SSRF regression cases: if any returns 200, the protection has regressed.",
+      "item": [
+        {
+          "name": "Loopback IPv4",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"url\": \"http://127.0.0.1/\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/validate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "validate"
+              ]
+            },
+            "description": "Direct loopback literal."
+          },
+          "response": []
+        },
+        {
+          "name": "Loopback IPv6",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"url\": \"http://[::1]/\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/validate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "validate"
+              ]
+            },
+            "description": "Loopback in IPv6 form."
+          },
+          "response": []
+        },
+        {
+          "name": "Loopback via IPv4-mapped IPv6",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"url\": \"http://[::ffff:127.0.0.1]/\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/validate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "validate"
+              ]
+            },
+            "description": "IPv4 smuggled inside an IPv6 literal - defeats naive string matching."
+          },
+          "response": []
+        },
+        {
+          "name": "Loopback via 6to4",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"url\": \"http://[2002:7f00:1::]/\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/validate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "validate"
+              ]
+            },
+            "description": "127.0.0.1 embedded in a 6to4 address."
+          },
+          "response": []
+        },
+        {
+          "name": "Loopback via NAT64",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"url\": \"http://[64:ff9b::7f00:1]/\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/validate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "validate"
+              ]
+            },
+            "description": "127.0.0.1 embedded behind the NAT64 well-known prefix."
+          },
+          "response": []
+        },
+        {
+          "name": "localhost hostname",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"url\": \"http://localhost/\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/validate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "validate"
+              ]
+            },
+            "description": "Blocked by hostname policy before DNS is ever queried."
+          },
+          "response": []
+        },
+        {
+          "name": "Internal domain suffix",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"url\": \"http://db.internal/\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/validate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "validate"
+              ]
+            },
+            "description": "Reserved/internal-only suffixes (.internal, .local, .corp, ...) are refused."
+          },
+          "response": []
+        },
+        {
+          "name": "Cloud metadata endpoint",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"url\": \"http://169.254.169.254/latest/meta-data/\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/validate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "validate"
+              ]
+            },
+            "description": "The classic SSRF target on AWS/Azure/GCP/DigitalOcean."
+          },
+          "response": []
+        },
+        {
+          "name": "Cloud metadata over IPv6",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"url\": \"http://[fd00:ec2::254]/\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/validate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "validate"
+              ]
+            },
+            "description": "IMDS over IPv6, also covered by the unique-local rule."
+          },
+          "response": []
+        },
+        {
+          "name": "Private RFC1918 range",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"url\": \"http://10.0.0.1/\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/validate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "validate"
+              ]
+            },
+            "description": "Private address space."
+          },
+          "response": []
+        },
+        {
+          "name": "Private 192.168 range",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"url\": \"http://192.168.1.1/\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/validate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "validate"
+              ]
+            },
+            "description": "Private address space."
+          },
+          "response": []
+        },
+        {
+          "name": "Carrier-grade NAT",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"url\": \"http://100.100.100.200/\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/validate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "validate"
+              ]
+            },
+            "description": "CGNAT space; also Alibaba Cloud's metadata address."
+          },
+          "response": []
+        },
+        {
+          "name": "Unspecified address",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"url\": \"http://0.0.0.0/\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/validate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "validate"
+              ]
+            },
+            "description": "0.0.0.0 routes to the local host on many stacks."
+          },
+          "response": []
+        },
+        {
+          "name": "Credentials masking an internal host",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"url\": \"https://example.com@127.0.0.1/\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/validate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "validate"
+              ]
+            },
+            "description": "The real host here is 127.0.0.1, not example.com. Embedded credentials are refused outright."
+          },
+          "response": []
+        }
+      ],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"rejected with 422\", () => pm.response.to.have.status(422));",
+              "const body = pm.response.json();",
+              "// Two error shapes reach the client: our own handler returns a plain string,",
+              "// while Pydantic's request-model errors return an array of error objects.",
+              "const detail = typeof body.detail === \"string\"",
+              "    ? body.detail",
+              "    : JSON.stringify(body.detail);",
+              "pm.test(\"explains why it was rejected\", () => {",
+              "    pm.expect(body).to.have.property(\"detail\");",
+              "    pm.expect(detail).to.not.be.empty;",
+              "});",
+              "pm.test(\"leaks no internal detail\", () => {",
+              "    pm.expect(body).to.not.have.property(\"traceback\");",
+              "    pm.expect(detail).to.not.match(/Traceback|File \"\\/|site-packages/);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Validate - malformed input",
+      "description": "Bad schemes, ports and payloads. All must be refused with 422.",
+      "item": [
+        {
+          "name": "Non-http scheme (file)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"url\": \"file:///etc/passwd\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/validate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "validate"
+              ]
+            },
+            "description": "Only http and https are scannable."
+          },
+          "response": []
+        },
+        {
+          "name": "Non-http scheme (gopher)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"url\": \"gopher://example.com/\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/validate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "validate"
+              ]
+            },
+            "description": "gopher:// is a classic SSRF pivot."
+          },
+          "response": []
+        },
+        {
+          "name": "Disallowed port",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"url\": \"http://example.com:8080/\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/validate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "validate"
+              ]
+            },
+            "description": "Default port allowlist is {80, 443}; configurable via JUSSIAI_ALLOWED_PORTS."
+          },
+          "response": []
+        },
+        {
+          "name": "Header injection attempt",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"url\": \"https://example.com/\\r\\nHost: evil.test\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/validate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "validate"
+              ]
+            },
+            "description": "CR/LF in the URL is rejected."
+          },
+          "response": []
+        },
+        {
+          "name": "Numeric TLD",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"url\": \"http://2130706433/\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/validate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "validate"
+              ]
+            },
+            "description": "Decimal encoding of 127.0.0.1."
+          },
+          "response": []
+        },
+        {
+          "name": "Empty URL",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"url\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/validate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "validate"
+              ]
+            },
+            "description": "Caught by the Pydantic model (min_length=1)."
+          },
+          "response": []
+        },
+        {
+          "name": "Unknown field",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"url\": \"example.com\",\n  \"surprise\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/validate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "validate"
+              ]
+            },
+            "description": "ScanRequest sets extra='forbid', so unexpected fields are rejected."
+          },
+          "response": []
+        }
+      ],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"rejected with 422\", () => pm.response.to.have.status(422));",
+              "const body = pm.response.json();",
+              "// Two error shapes reach the client: our own handler returns a plain string,",
+              "// while Pydantic's request-model errors return an array of error objects.",
+              "const detail = typeof body.detail === \"string\"",
+              "    ? body.detail",
+              "    : JSON.stringify(body.detail);",
+              "pm.test(\"explains why it was rejected\", () => {",
+              "    pm.expect(body).to.have.property(\"detail\");",
+              "    pm.expect(detail).to.not.be.empty;",
+              "});",
+              "pm.test(\"leaks no internal detail\", () => {",
+              "    pm.expect(body).to.not.have.property(\"traceback\");",
+              "    pm.expect(detail).to.not.match(/Traceback|File \"\\/|site-packages/);",
+              "});"
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://127.0.0.1:8000",
+      "type": "string"
+    },
+    {
+      "key": "targetUrl",
+      "value": "example.com",
+      "type": "string"
+    }
+  ]
+}
