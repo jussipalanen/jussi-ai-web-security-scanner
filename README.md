@@ -34,6 +34,31 @@ the scan endpoint and the full SSRF rejection set. See
 - Python 3.12+
 - [Ollama](https://ollama.com/) (only once the AI layer lands)
 
+## Docker
+
+```bash
+docker compose up --build
+```
+
+The API is then on <http://localhost:8000>, with the test page at
+<http://localhost:8000/test-url>.
+
+The image is multi-stage, so no build toolchain ships in the runtime layer, and
+the container runs as an unprivileged user. The compose service drops all
+capabilities, mounts the root filesystem read-only and sets
+`no-new-privileges` — the scanner only makes outbound requests and needs no
+write access.
+
+Override any setting through the environment (see `.env.example`):
+
+```bash
+JUSSIAI_MAX_REDIRECTS=3 docker compose up
+```
+
+A commented-out `ollama` service is included behind a profile
+(`docker compose --profile ai up`) for when the AI layer lands. It does nothing
+today.
+
 ## Setup
 
 ```bash

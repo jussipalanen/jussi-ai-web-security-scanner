@@ -1,0 +1,39 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: jussiai-web-security-scanner:local
+    ports:
+      - "8000:8000"
+    environment:
+      # Conservative defaults live in the application; override them here.
+      JUSSIAI_REQUEST_TIMEOUT_SECONDS: "10.0"
+      JUSSIAI_MAX_REDIRECTS: "5"
+      JUSSIAI_MAX_RESPONSE_BYTES: "1048576"
+      JUSSIAI_AI_ENABLED: "false"
+    restart: unless-stopped
+    # The scanner only ever makes outbound requests; nothing needs to write to
+    # the filesystem at runtime.
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+  # The AI layer is not implemented yet. Start this with:
+  #   docker compose --profile ai up
+  # and point JUSSIAI_OLLAMA_BASE_URL at http://ollama:11434 once it lands.
+  ollama:
+    image: ollama/ollama:latest
+    profiles: ["ai"]
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-models:/root/.ollama
+    restart: unless-stopped
+
+volumes:
+  ollama-models:
