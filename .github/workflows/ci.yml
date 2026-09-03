@@ -1,0 +1,102 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Read-only by default; no job here needs to write to the repository.
+permissions:
+  contents: read
+
+# A new push supersedes an in-flight run on the same ref.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Quality (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13", "3.14"]
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install project and dev dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      # Lint before tests: a style or security-rule failure is cheaper to report.
+      - name: Lint (ruff)
+        run: ruff check --output-format=github .
+
+      - name: Formatting (ruff)
+        run: ruff format --check .
+
+      - name: Type check (mypy --strict)
+        run: mypy
+
+      - name: Tests
+        run: pytest -q
+
+  ssrf-guard:
+    name: SSRF regression guard
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install project and dev dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      # Run the security-critical suites on their own so a regression here is
+      # obvious in the checks list rather than buried in a single test job.
+      - name: Validation, SSRF and safe-client tests
+        run: pytest tests/security tests/scanner/test_http_client.py -q
+
+  audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install project
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e . pip-audit
+
+      # Fails the run when a dependency has a known advisory. If this becomes
+      # noisy, add `continue-on-error: true` rather than deleting the job.
+      # --skip-editable ignores this project's own editable install, which is
+      # not on PyPI and so cannot be looked up.
+      - name: Audit installed dependencies
+        run: pip-audit --skip-editable --progress-spinner=off
