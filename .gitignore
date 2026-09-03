@@ -11,3 +11,7 @@ build/
 *.egg-info/
 .coverage
 htmlcov/
+
+# Generated scan reports
+*.pdf
+report.json
