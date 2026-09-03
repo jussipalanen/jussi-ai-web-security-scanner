@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Developer helper for the Dockerised scanner.
-# Run ./dev.sh with no arguments to see the available commands.
+# Run ./dev with no arguments to see the available commands.
 
 set -euo pipefail
 
@@ -36,7 +36,7 @@ check_port_conflict() {
     warn "something other than Docker is already listening on port ${PORT}:"
     printf '%s\n' "$pids" >&2
     warn "requests to localhost:${PORT} may reach that process instead of the container."
-    warn "stop it, or run with a different port: JUSSIAI_PORT=8010 ./dev.sh up"
+    warn "stop it, or run with a different port: JUSSIAI_PORT=8010 ./dev up"
   fi
 }
 
@@ -48,13 +48,13 @@ wait_for_health() {
   while (( tries < 60 )); do
     case "$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$id" 2>/dev/null)" in
       healthy) info "healthy"; return 0 ;;
-      unhealthy) die "container reported unhealthy. See: ./dev.sh logs" ;;
+      unhealthy) die "container reported unhealthy. See: ./dev logs" ;;
       none) return 0 ;;
     esac
     tries=$((tries + 1))
     sleep 1
   done
-  warn "gave up waiting for the health check; see ./dev.sh logs"
+  warn "gave up waiting for the health check; see ./dev logs"
 }
 
 cmd_up() {
@@ -120,7 +120,7 @@ cmd_health() {
 # code in the image.
 cmd_scan() {
   require_daemon
-  [[ $# -ge 1 ]] || die "usage: ./dev.sh scan <url>"
+  [[ $# -ge 1 ]] || die "usage: ./dev scan <url>"
   "${DC[@]}" exec -T "$SERVICE" python - "$1" <<'PY'
 import json, sys, urllib.error, urllib.request
 
@@ -174,7 +174,7 @@ usage() {
   cat <<'USAGE'
 JussiAI Web Security Scanner - Docker helper
 
-  ./dev.sh <command> [args]
+  ./dev <command> [args]
 
 Lifecycle
   up          Build if needed, start in the background, wait for healthy
