@@ -58,3 +58,48 @@ def test_scan_is_documented(client: TestClient) -> None:
     finding = spec["components"]["schemas"]["Finding"]["properties"]
     assert "remediation" in finding
     assert "description" in finding
+
+
+def test_test_page_is_served(client: TestClient) -> None:
+    response = client.get("/test-url")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/html")
+    assert "JussiAI Web Security Scanner" in response.text
+
+
+def test_test_page_sets_a_strict_csp(client: TestClient) -> None:
+    """The page renders values echoed from scanned sites, so it must be locked down."""
+    csp = client.get("/test-url").headers["content-security-policy"]
+    assert "default-src 'none'" in csp
+    assert "'unsafe-inline'" not in csp
+    assert client.get("/test-url").headers["x-content-type-options"] == "nosniff"
+
+
+def test_page_assets_are_served(client: TestClient) -> None:
+    for path, content_type in (("/static/app.js", "javascript"), ("/static/styles.css", "css")):
+        response = client.get(path)
+        assert response.status_code == 200, path
+        assert content_type in response.headers["content-type"]
+
+
+def test_page_uses_no_inline_script_or_external_origin(client: TestClient) -> None:
+    """A strict CSP is only useful if the page actually complies with it."""
+    html = client.get("/test-url").text
+    assert "<script>" not in html, "inline script would be blocked by the CSP"
+    assert "http://" not in html and "https://" not in html, "no external resources"
+
+
+def test_page_never_writes_raw_html(client: TestClient) -> None:
+    """Scanner output is attacker-influenced; it must only ever be set as text.
+
+    Matches assignments and HTML-writing calls rather than the bare word, so the
+    comment in app.js explaining the rule does not trip the test.
+    """
+    source = client.get("/static/app.js").text
+    for pattern in ("innerHTML =", "outerHTML =", "insertAdjacentHTML", "document.write"):
+        assert pattern not in source, f"app.js must not use {pattern}"
+    assert "textContent" in source, "rendering should go through textContent"
+
+
+def test_test_page_is_hidden_from_the_api_schema(client: TestClient) -> None:
+    assert "/test-url" not in client.get("/openapi.json").json()["paths"]

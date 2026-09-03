@@ -18,6 +18,7 @@ Early development. Implemented so far:
 - **SSRF-safe HTTP client** with address pinning and per-hop revalidation
 - **Scanner engine** and 7 of the 11 MVP checks
 - FastAPI application with `/health`, `/validate` and `/scan`
+- Browser test page at `/test-url`
 
 Not yet implemented: TLS certificate checks, `robots.txt`, `sitemap.xml`,
 technology detection, scoring, and the AI layer. See [Roadmap](#roadmap).
@@ -60,6 +61,22 @@ Interactive API docs: <http://127.0.0.1:8000/docs>
 ```bash
 curl -s localhost:8000/health
 ```
+
+## Test page
+
+A minimal browser form for trying the scanner by hand:
+
+```
+http://localhost:8000/test-url
+```
+
+Enter a host, submit, and the findings render with their descriptions and
+remediation steps. It is served by the backend itself, so it is same-origin and
+needs no CORS configuration.
+
+The page is static (no build step, no external resources) and locked down with
+`default-src 'none'` — it renders header values echoed from scanned sites, so
+everything is inserted as text, never as HTML.
 
 ## Scanning a site
 

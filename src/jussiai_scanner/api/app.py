@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from jussiai_scanner import __version__
-from jussiai_scanner.api.routes import health, scan, validate
+from jussiai_scanner.api.routes import health, scan, ui, validate
 from jussiai_scanner.api.status_codes import HTTP_422_UNPROCESSABLE
 from jussiai_scanner.security.errors import TargetValidationError
 
@@ -40,6 +41,8 @@ def create_app() -> FastAPI:
     app.include_router(health.router)
     app.include_router(validate.router)
     app.include_router(scan.router)
+    app.include_router(ui.router)
+    app.mount("/static", StaticFiles(directory=ui.STATIC_DIR), name="static")
     return app
 
 
